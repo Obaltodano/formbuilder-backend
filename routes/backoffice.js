@@ -56,8 +56,12 @@ router.post('/alta-empresa', [auth, esSuperadmin], async (req, res) => {
         await user.save();
         res.json({ msg: `Empresa ${empresaId} creada con éxito. Gerente: ${nombre}` });
     } catch (err) {
-        res.status(500).send('Error al dar de alta empresa');
-    }
+    console.error("DETALLE DEL ERROR 500:", err); // Esto imprimirá el error real en tu consola negra
+    res.status(500).json({ 
+        error: 'Error al dar de alta empresa', 
+        detalles: err.message 
+    });
+}
 });
 
 // routes/backoffice.js
