@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const userController = require('../controllers/userController');
+const upload = require('../middleware/upload'); // Configuración de Multer
 
 // @route   GET api/usuarios/equipo
 // @desc    Obtener todo el personal de la empresa del gerente
@@ -46,4 +48,14 @@ router.post('/registro-equipo', auth, async (req, res) => {
     }
 });
 
+
+// Ruta para obtener los datos del perfil actual
+router.get('/perfil', auth, userController.obtenerPerfil);
+
+// Ruta para actualizar datos de texto (nombre, dni, telefono)
+router.put('/perfil', auth, userController.actualizarPerfil);
+
+// Ruta para subir la foto de perfil
+// 'fotoPerfil' es el nombre del campo que enviará el FormData desde Vue
+router.post('/perfil/foto', auth, upload.single('fotoPerfil'), userController.subirFoto);
 module.exports = router;

@@ -9,7 +9,20 @@ const UserSchema = new mongoose.Schema({
     password: { type: String, required: true },
     rol: { type: String, enum: ['superadmin', 'gerente', 'empleado'], default: 'empleado' },
     empresaId: { type: String, required: true },
-    fechaRegistro: { type: Date, default: Date.now }
+    fechaRegistro: { type: Date, default: Date.now },
+
+    // --- CAMPOS PARA EL PERFIL ---
+    dni: { type: String, default: "" },
+    telefono: { type: String, default: "" },
+    fotoUrl: { type: String, default: "" },
+    
+    // Sub-documento para archivos adjuntos
+    documentos: {
+        dniFrontal: { type: String, default: "" },
+        comprobanteDomicilio: { type: String, default: "" }
+    },
+    
+    perfilCompletado: { type: Boolean, default: false }
 });
 
 // Este "hook" se ejecuta automáticamente antes de cada .save()
