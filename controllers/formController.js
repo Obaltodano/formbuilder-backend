@@ -10,7 +10,7 @@ exports.crearFormulario = async (req, res) => {
             campos,
             empresaId: req.user.empresaId // Extraído del token por el middleware
         });
-
+          console.log(nuevoForm)
         await nuevoForm.save();
         res.status(201).json({ msg: "Formulario guardado con éxito", data: nuevoForm });
     } catch (error) {
