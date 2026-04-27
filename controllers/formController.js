@@ -1,22 +1,41 @@
 const Formulario = require('../models/Formulario');
 const Respuesta = require('../models/Respuesta');
+const Usuario = require('../models/User');
+const fs = require('fs');
+const path = require('path');
 
 exports.crearFormulario = async (req, res) => {
     try {
         const { titulo, campos } = req.body;
-        
+
+        // Validación preventiva para cuadrículas
+        const camposValidados = campos.map(campo => {
+            if (campo.tipo.startsWith('cuadricula')) {
+                if (!campo.filas || campo.filas.length === 0) {
+                    // Opcional: asignar valores por defecto si vienen vacíos
+                    campo.filas = ["Fila 1"]; 
+                }
+                if (!campo.columnas || campo.columnas.length === 0) {
+                    campo.columnas = ["Columna 1"];
+                }
+            }
+            return campo;
+        });
+
         const nuevoForm = new Formulario({
             titulo,
-            campos,
-            empresaId: req.user.empresaId // Extraído del token por el middleware
+            campos: camposValidados,
+            empresaId: req.user.empresaId 
         });
-          console.log(nuevoForm)
+
         await nuevoForm.save();
         res.status(201).json({ msg: "Formulario guardado con éxito", data: nuevoForm });
     } catch (error) {
+        console.error("Error original:", error); // Importante para debug
         res.status(500).json({ msg: "Error al guardar el formulario" });
     }
 };
+
 
 exports.obtenerFormulariosPorEmpresa = async (req, res) => {
     try {
@@ -45,82 +64,90 @@ exports.obtenerFormularioPorId = async (req, res) => {
 // 2. Guardar la respuesta del empleado
 exports.guardarRespuesta = async (req, res) => {
   try {
-    // 1. Parsear los datos de texto
-    const datosRecibidos = JSON.parse(req.body.datos); 
-    
-    // 2. Manejar MÚLTIPLES ARCHIVOS (CORREGIDO PARA RUTAS RELATIVAS)
+    // 1. Obtener datos básicos
+    const { empresaId, formularioId } = req.body;
+    const usuarioId = req.user ? (req.user.id || req.user._id) : req.body.usuarioId;
+    const nombreUsuario = req.user ? req.user.nombre : "Usuario_Desconocido";
+    const nombreFormulario = req.body.nombreFormulario || "Formulario_General"; // Asegúrate de enviarlo desde el front
+
+    const datosRecibidos = JSON.parse(req.body.datos);
+
+    // 2. Definir y crear la ruta física de la carpeta
+    // Estructura: uploads/NOMBRE_EMPRESA/NOMBRE_USUARIO/NOMBRE_FORMULARIO
+    const carpetaDestino = path.join(
+      'uploads', 
+      empresaId.replace(/\s+/g, '_'), 
+      nombreUsuario.replace(/\s+/g, '_'), 
+      nombreFormulario.replace(/\s+/g, '_')
+    );
+
+    // Crear la carpeta si no existe (recursive: true crea toda la ruta)
+    if (!fs.existsSync(carpetaDestino)) {
+      fs.mkdirSync(carpetaDestino, { recursive: true });
+    }
+
+    // 3. Procesar los archivos recibidos
     if (req.files && req.files.length > 0) {
       req.files.forEach(file => {
-        // Normalizamos la ruta (Windows \ a URL /)
-        const rutaCompleta = file.path.replace(/\\/g, '/');
+        // Generar nombre de archivo único
+        const nombreArchivo = `${Date.now()}-${file.originalname}`;
+        const rutaFisicaFinal = path.join(carpetaDestino, nombreArchivo);
 
-        // BUSCAMOS EL ÍNDICE DE 'uploads' PARA RECORTAR LA RUTA
-        // Esto transforma "C:/Users/.../backend/uploads/img.png" en "uploads/img.png"
-        const indiceUploads = rutaCompleta.indexOf('uploads/');
-        const rutaRelativa = rutaCompleta.substring(indiceUploads);
+        // MOVER el archivo de la carpeta temporal a la carpeta estructurada
+        fs.renameSync(file.path, rutaFisicaFinal);
 
-        // Si el campo en tu formulario se llama 'fotosUrl', lo guardamos ahí
-        if (!datosRecibidos.fotosUrl) {
-          datosRecibidos.fotosUrl = [];
+        // Guardar la ruta relativa en el objeto de datos para la BD
+        const rutaRelativa = rutaFisicaFinal.replace(/\\/g, '/');
+        const campoLabel = file.fieldname; // Ahora es el label del campo
+
+        if (campoLabel) {
+          if (!datosFinales[campoLabel] || typeof datosFinales[campoLabel] === 'string') {
+            datosFinales[campoLabel] = [];
+          }
+          datosFinales[campoLabel].push(rutaRelativa);
         }
-        datosRecibidos.fotosUrl.push(rutaRelativa);
-        
-        // OPCIONAL: Si quieres que el valor del campo específico del formulario
-        // (por ejemplo el que tiene el ID largo) también sea la ruta:
-        // Buscamos si existe la llave en datosRecibidos que coincida con el nombre del input
-        // pero lo más seguro es usar el array fotosUrl que creamos arriba.
       });
     }
 
-    // 3. Crear el documento en la BD
+    // 4. Guardar en MongoDB
     const nuevaRespuesta = new Respuesta({
-      usuarioId: req.user ? (req.user.id || req.user._id) : req.body.usuarioId,
-      formularioId: req.body.formularioId,
-      empresaId: req.body.empresaId,
-      datos: datosRecibidos, // Aquí ya van las rutas relativas
+      usuarioId,
+      formularioId,
+      empresaId,
+      datos: datosRecibidos,
       fechaEnvio: new Date()
     });
 
-    if (!nuevaRespuesta.usuarioId) {
-      return res.status(401).json({ 
-        error: 'No se pudo identificar al usuario.' 
-      });
-    }
-
     await nuevaRespuesta.save();
-    
-    res.status(201).json({ 
-      mensaje: 'Reporte guardado con éxito',
-      id: nuevaRespuesta._id 
-    });
+    res.status(201).json({ mensaje: 'Reporte y archivos guardados correctamente' });
 
   } catch (error) {
-    console.error("ERROR EN CONTROLADOR:", error);
-    res.status(500).json({ 
-      error: 'Error interno al guardar',
-      detalle: error.message 
-    });
+    console.error("ERROR AL GUARDAR:", error);
+    res.status(500).json({ error: 'Error físico al guardar archivos', detalle: error.message });
   }
 };
 
 //3. Obtener reportes (respuestas) para el gerente
 exports.listarRespuestas = async (req, res) => {
     try {
-        // Buscamos respuestas filtradas por la empresa del token
         const respuestas = await Respuesta.find({ empresaId: req.user.empresaId })
-            .populate('usuarioId', 'nombre') 
-            .populate('formularioId', 'titulo')
+            // Asegúrate de que 'Usuario' coincida exactamente con mongoose.model('Usuario', ...)
+            .populate({
+                path: 'usuarioId',
+                select: 'nombre',
+                model: 'User' // Forzamos el uso del modelo registrado
+            })
+            .populate('formularioId') 
             .sort({ fechaEnvio: -1 })
-            .lean(); // .lean() hace la consulta más ligera y evita errores de punteros
+            .lean();
 
-        // FILTRO CRÍTICO: Si borraste un usuario o un formulario, populate devuelve null.
-        // Esto evita que el Frontend explote al intentar leer datos de un null.
-        const respuestasLimpias = respuestas.filter(r => r.usuarioId && r.formularioId);
+        // Filtro para evitar errores si se borró un usuario o formulario
+        const respuestasValidas = respuestas.filter(r => r.usuarioId && r.formularioId);
 
-        console.log(`[Backend] Enviando ${respuestasLimpias.length} reportes válidos.`);
-        res.json(respuestasLimpias);
+        console.log(`[Backend] Enviando ${respuestasValidas.length} reportes.`);
+        res.json(respuestasValidas);
     } catch (error) {
-        console.error("❌ ERROR CRÍTICO EN LISTAR RESPUESTAS:", error.message);
-        res.status(500).json({ msg: "Error al procesar reportes", error: error.message });
+        console.error("❌ Error en listarRespuestas:", error.message);
+        res.status(500).json({ error: "Error al cargar los reportes" });
     }
 };

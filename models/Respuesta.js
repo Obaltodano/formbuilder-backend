@@ -8,7 +8,7 @@ const RespuestaSchema = new mongoose.Schema({
     },
     usuarioId: { 
         type: mongoose.Schema.Types.ObjectId, 
-        ref: 'User', 
+        ref: 'Usuario', // <--- Verifica si es 'Usuario' o 'User' en tu proyecto
         required: true 
     },
     empresaId: { 
@@ -16,13 +16,13 @@ const RespuestaSchema = new mongoose.Schema({
         required: true 
     },
     datos: { 
-        type: Object, // Aquí guardamos el JSON con las respuestas { "Kilometraje": "1500", ... }
+        type: mongoose.Schema.Types.Mixed, // Mixed es más robusto para JSON dinámico
         required: true 
     },
     fechaEnvio: { 
         type: Date, 
         default: Date.now 
     }
-});
+}, { minimize: false }); // Evita que Mongoose elimine objetos vacíos
 
 module.exports = mongoose.model('Respuesta', RespuestaSchema);

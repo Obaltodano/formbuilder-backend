@@ -16,11 +16,13 @@ const FormularioSchema = new mongoose.Schema({
     },
     campos: [
         {
-            id: Number,
-            label: String,        // Ejemplo: "¿Kilometraje del vehículo?"
-            tipo: String,         // texto, numero, gps, foto, lista
-            requerido: { type: Boolean, default: false },
-            opciones: [String]    // Solo para el tipo 'lista'
+            label: String,
+            tipo: String, // "cuadricula_unica" o "cuadricula_multiple"
+            requerido: Boolean,
+            // Agrega estos dos para las cuadrículas:
+            filas: [String],    // Ejemplo: ["Limpieza", "Atención"]
+            columnas: [String], // Ejemplo: ["Malo", "Regular", "Bueno"]
+            opciones: Array      // Puedes mantenerlo para otros tipos de campo
         }
     ],
     esPlantilla: { type: Boolean, default: false },
