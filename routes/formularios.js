@@ -12,20 +12,6 @@ router.get('/', auth, formController.obtenerFormulariosPorEmpresa);
 
 router.get('/:id', auth, formController.obtenerFormularioPorId);
 
-// Obtener un formulario específico por ID
-router.get('/:id', auth, async (req, res) => {
-    try {
-        const formulario = await Formulario.findOne({ 
-            _id: req.params.id, 
-            empresaId: req.user.empresaId // Seguridad: Solo si es de su empresa
-        });
-        if (!formulario) return res.status(404).send('Formulario no encontrado');
-        res.json(formulario);
-    } catch (err) {
-        res.status(500).send('Error de servidor');
-    }
-});
-
 // Actualizar un formulario existente
 router.put('/:id', auth, async (req, res) => {
   try {

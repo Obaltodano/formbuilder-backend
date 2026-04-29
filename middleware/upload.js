@@ -6,9 +6,9 @@ const storage = multer.diskStorage({
     cb(null, 'uploads/'); // La carpeta que ya tienes creada
   },
   filename: (req, file, cb) => {
-    // Le ponemos un nombre único: ID-FECHA.extension
+    // Le ponemos un nombre único: FECHA.extension (sin depender de req.user)
     const ext = path.extname(file.originalname);
-    cb(null, `${req.user.id}-${Date.now()}${ext}`);
+    cb(null, `${Date.now()}-${Math.random().toString(36).substring(2, 15)}${ext}`);
   }
 });
 

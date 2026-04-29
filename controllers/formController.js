@@ -8,11 +8,24 @@ exports.crearFormulario = async (req, res) => {
     try {
         const { titulo, campos } = req.body;
 
+        // Validar que el usuario tenga empresaId
+        if (!req.user?.empresaId) {
+            return res.status(400).json({ msg: "Usuario no tiene empresa asignada" });
+        }
+
+        // Validación de datos de entrada
+        if (!titulo || titulo.trim().length === 0) {
+            return res.status(400).json({ msg: "El título del formulario es requerido" });
+        }
+
+        if (!campos || !Array.isArray(campos) || campos.length === 0) {
+            return res.status(400).json({ msg: "Los campos del formulario son requeridos" });
+        }
+
         // Validación preventiva para cuadrículas
         const camposValidados = campos.map(campo => {
-            if (campo.tipo.startsWith('cuadricula')) {
+            if (campo.tipo && campo.tipo.startsWith('cuadricula')) {
                 if (!campo.filas || campo.filas.length === 0) {
-                    // Opcional: asignar valores por defecto si vienen vacíos
                     campo.filas = ["Fila 1"]; 
                 }
                 if (!campo.columnas || campo.columnas.length === 0) {
@@ -23,15 +36,16 @@ exports.crearFormulario = async (req, res) => {
         });
 
         const nuevoForm = new Formulario({
-            titulo,
+            titulo: titulo.trim(),
             campos: camposValidados,
-            empresaId: req.user.empresaId 
+            empresaId: req.user.empresaId,
+            creadoPor: req.user.id || req.user._id
         });
 
         await nuevoForm.save();
         res.status(201).json({ msg: "Formulario guardado con éxito", data: nuevoForm });
     } catch (error) {
-        console.error("Error original:", error); // Importante para debug
+        console.error("Error en crearFormulario:", error);
         res.status(500).json({ msg: "Error al guardar el formulario" });
     }
 };
@@ -71,6 +85,9 @@ exports.guardarRespuesta = async (req, res) => {
     const nombreFormulario = req.body.nombreFormulario || "Formulario_General"; // Asegúrate de enviarlo desde el front
 
     const datosRecibidos = JSON.parse(req.body.datos);
+    
+    // Clonar datos para evitar mutación del objeto original
+    const datosFinales = { ...datosRecibidos };
 
     // 2. Definir y crear la ruta física de la carpeta
     // Estructura: uploads/NOMBRE_EMPRESA/NOMBRE_USUARIO/NOMBRE_FORMULARIO

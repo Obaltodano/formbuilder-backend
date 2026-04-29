@@ -8,7 +8,7 @@ const RespuestaSchema = new mongoose.Schema({
     },
     usuarioId: { 
         type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Usuario', // <--- Verifica si es 'Usuario' o 'User' en tu proyecto
+        ref: 'User', // Corregido para coincidir con el modelo User
         required: true 
     },
     empresaId: { 
