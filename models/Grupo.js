@@ -16,10 +16,9 @@ const GrupoSchema = new mongoose.Schema({
     default: null
   },
   
-  // Referencia a la empresa
+  // Referencia a la empresa (string para multi-tenancy)
   empresaId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Empresa',
+    type: String,
     required: [true, 'La empresa es obligatoria'],
     index: true
   },

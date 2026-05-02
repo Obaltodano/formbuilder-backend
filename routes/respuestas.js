@@ -1,53 +1,87 @@
+// routes/respuestas.js - Rutas de Respuestas (Contrato v1.0)
 const express = require('express');
 const router = express.Router();
-const formController = require('../controllers/formController');
-const auth = require('../middleware/auth');
+const respuestaController = require('../controllers/respuestaController');
+const {
+  verifyToken,
+  requireRole,
+  verifyEmpresaActiva,
+  verificarLimitesPlan
+} = require('../middleware/authMiddleware');
 const multer = require('multer');
-const fs = require('fs');
 const path = require('path');
-const mongoose = require('mongoose');
+const fs = require('fs');
 
-
-// MODIFICACIÓN EN respuestas.js
+// Configuración de Multer para respuestas
+// Los archivos se guardarán temporalmente y el controlador los moverá a la ubicación final
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Si req.body está vacío, usamos una carpeta temporal para que Multer no falle
-    // El error 500 ocurre porque mkdirSync falla si no recibe strings válidos
-    const empresa = (req.body.empresaId || 'general').toString().replace(/\s+/g, '-');
-    const empleado = (req.body.nombreEmpleado || 'anonimo').toString().replace(/\s+/g, '-');
-    const form = (req.body.nombreFormulario || 'sin-titulo').toString().replace(/\s+/g, '-');
-    
-    // Aseguramos que la ruta sea relativa al proyecto
-    const folderPath = path.join(__dirname, '..', 'uploads', empresa, empleado, form);
-
-    try {
-      // Creamos la carpeta de forma síncrona
-      fs.mkdirSync(folderPath, { recursive: true });
-      cb(null, folderPath);
-    } catch (err) {
-      console.error("Error creando carpetas:", err);
-      cb(err, null); // Esto enviará el error real al cliente
+    // Carpeta temporal
+    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
     }
+    cb(null, tempDir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
+    // Nombre temporal - el controlador lo renombrará
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'temp-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-// En tu modelo Respuesta.js
-const respuestaSchema = new mongoose.Schema({
-  usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' },
-  formularioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Formulario' },
-  datos: { type: Object }, // <--- Asegúrate de que sea Object o Schema.Types.Mixed
-  fechaEnvio: { type: Date, default: Date.now }
+// Filtro de archivos permitidos
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Tipo de archivo no permitido: ' + file.mimetype), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB máximo por archivo
+    files: 10 // Máximo 10 archivos
+  }
 });
 
-const upload = multer({ storage: storage });
+// Middleware de autenticación y verificación para todas las rutas
+router.use(verifyToken);
+router.use(verifyEmpresaActiva);
 
-// Aplicamos el middleware de subida antes del controlador
-// 'archivo' debe ser el nombre del campo que envías desde el Frontend
-router.post('/', auth, upload.any(), formController.guardarRespuesta);
+// GET /api/respuestas - Listar respuestas (todos los roles)
+router.get('/', respuestaController.listarRespuestas);
 
-router.get('/', auth, formController.listarRespuestas);
+// GET /api/respuestas/:id - Obtener respuesta específica
+router.get('/:id', respuestaController.obtenerRespuesta);
+
+// POST /api/respuestas - Crear respuesta (CRÍTICO: Contrato v1.0)
+// 'archivo' es el nombre del campo para archivos múltiples desde el frontend
+router.post('/',
+  verificarLimitesPlan('respuestas'), // Verificar límite de respuestas
+  upload.any(), // Aceptar múltiples archivos en campos con nombre dinámico (campoId)
+  respuestaController.crearRespuesta
+);
+
+// DELETE /api/respuestas/:id - Eliminar respuesta (gerente/superadmin/creador)
+router.delete('/:id', respuestaController.eliminarRespuesta);
 
 module.exports = router;

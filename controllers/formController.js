@@ -1,170 +1,270 @@
+// controllers/formController.js - Controlador de Formularios (Contrato v1.0)
 const Formulario = require('../models/Formulario');
 const Respuesta = require('../models/Respuesta');
-const Usuario = require('../models/User');
+const User = require('../models/User');
+const Empresa = require('../models/Empresa');
 const fs = require('fs');
 const path = require('path');
 
+// POST /api/formularios - Crear formulario
 exports.crearFormulario = async (req, res) => {
-    try {
-        const { titulo, campos } = req.body;
-
-        // Validar que el usuario tenga empresaId
-        if (!req.user?.empresaId) {
-            return res.status(400).json({ msg: "Usuario no tiene empresa asignada" });
-        }
-
-        // Validación de datos de entrada
-        if (!titulo || titulo.trim().length === 0) {
-            return res.status(400).json({ msg: "El título del formulario es requerido" });
-        }
-
-        if (!campos || !Array.isArray(campos) || campos.length === 0) {
-            return res.status(400).json({ msg: "Los campos del formulario son requeridos" });
-        }
-
-        // Validación preventiva para cuadrículas
-        const camposValidados = campos.map(campo => {
-            if (campo.tipo && campo.tipo.startsWith('cuadricula')) {
-                if (!campo.filas || campo.filas.length === 0) {
-                    campo.filas = ["Fila 1"]; 
-                }
-                if (!campo.columnas || campo.columnas.length === 0) {
-                    campo.columnas = ["Columna 1"];
-                }
-            }
-            return campo;
-        });
-
-        const nuevoForm = new Formulario({
-            titulo: titulo.trim(),
-            campos: camposValidados,
-            empresaId: req.user.empresaId,
-            creadoPor: req.user.id || req.user._id
-        });
-
-        await nuevoForm.save();
-        res.status(201).json({ msg: "Formulario guardado con éxito", data: nuevoForm });
-    } catch (error) {
-        console.error("Error en crearFormulario:", error);
-        res.status(500).json({ msg: "Error al guardar el formulario" });
-    }
-};
-
-
-exports.obtenerFormulariosPorEmpresa = async (req, res) => {
-    try {
-        // Solo traemos los formularios que pertenecen a la empresa del usuario
-        const formularios = await Formulario.find({ empresaId: req.user.empresaId });
-        res.json(formularios);
-    } catch (error) {
-        res.status(500).json({ msg: "Error al obtener formularios" });
-    }
-};
-
-// 1. Obtener un formulario específico por ID (Para que Pedro lo vea)
-exports.obtenerFormularioPorId = async (req, res) => {
-    try {
-        const formulario = await Formulario.findOne({ 
-            _id: req.params.id, 
-            empresaId: req.user.empresaId 
-        });
-        if (!formulario) return res.status(404).json({ msg: "No encontrado" });
-        res.json(formulario);
-    } catch (error) {
-        res.status(500).json({ msg: "Error al obtener el detalle" });
-    }
-};
-
-// 2. Guardar la respuesta del empleado
-exports.guardarRespuesta = async (req, res) => {
   try {
-    // 1. Obtener datos básicos
-    const { empresaId, formularioId } = req.body;
-    const usuarioId = req.user ? (req.user.id || req.user._id) : req.body.usuarioId;
-    const nombreUsuario = req.user ? req.user.nombre : "Usuario_Desconocido";
-    const nombreFormulario = req.body.nombreFormulario || "Formulario_General"; // Asegúrate de enviarlo desde el front
+    const { titulo, descripcion, campos, esPlantilla, categoria } = req.body;
 
-    const datosRecibidos = JSON.parse(req.body.datos);
-    
-    // Clonar datos para evitar mutación del objeto original
-    const datosFinales = { ...datosRecibidos };
-
-    // 2. Definir y crear la ruta física de la carpeta
-    // Estructura: uploads/NOMBRE_EMPRESA/NOMBRE_USUARIO/NOMBRE_FORMULARIO
-    const carpetaDestino = path.join(
-      'uploads', 
-      empresaId.replace(/\s+/g, '_'), 
-      nombreUsuario.replace(/\s+/g, '_'), 
-      nombreFormulario.replace(/\s+/g, '_')
-    );
-
-    // Crear la carpeta si no existe (recursive: true crea toda la ruta)
-    if (!fs.existsSync(carpetaDestino)) {
-      fs.mkdirSync(carpetaDestino, { recursive: true });
-    }
-
-    // 3. Procesar los archivos recibidos
-    if (req.files && req.files.length > 0) {
-      req.files.forEach(file => {
-        // Generar nombre de archivo único
-        const nombreArchivo = `${Date.now()}-${file.originalname}`;
-        const rutaFisicaFinal = path.join(carpetaDestino, nombreArchivo);
-
-        // MOVER el archivo de la carpeta temporal a la carpeta estructurada
-        fs.renameSync(file.path, rutaFisicaFinal);
-
-        // Guardar la ruta relativa en el objeto de datos para la BD
-        const rutaRelativa = rutaFisicaFinal.replace(/\\/g, '/');
-        const campoLabel = file.fieldname; // Ahora es el label del campo
-
-        if (campoLabel) {
-          if (!datosFinales[campoLabel] || typeof datosFinales[campoLabel] === 'string') {
-            datosFinales[campoLabel] = [];
-          }
-          datosFinales[campoLabel].push(rutaRelativa);
-        }
+    // Validaciones
+    if (!titulo || titulo.trim().length === 0) {
+      return res.status(400).json({
+        error: "El título del formulario es requerido",
+        code: "TITULO_REQUERIDO"
       });
     }
 
-    // 4. Guardar en MongoDB
-    const nuevaRespuesta = new Respuesta({
-      usuarioId,
-      formularioId,
-      empresaId,
-      datos: datosRecibidos,
-      fechaEnvio: new Date()
+    if (!campos || !Array.isArray(campos) || campos.length === 0) {
+      return res.status(400).json({
+        error: "Los campos del formulario son requeridos",
+        code: "CAMPOS_REQUERIDOS"
+      });
+    }
+
+    // Validar cada campo según tipo
+    const camposValidados = campos.map(campo => {
+      // Generar ID si no tiene
+      if (!campo.id) {
+        campo.id = `campo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+
+      // Validaciones específicas por tipo
+      switch (campo.tipo) {
+        case 'cuadricula_unica':
+        case 'cuadricula_multiple':
+          if (!campo.filas || campo.filas.length === 0) campo.filas = ["Fila 1"];
+          if (!campo.columnas || campo.columnas.length === 0) campo.columnas = ["Columna 1"];
+          break;
+        case 'radio':
+        case 'multiple':
+        case 'dropdown':
+          if (!campo.opciones || campo.opciones.length === 0) {
+            campo.opciones = ["Opción 1"];
+          }
+          break;
+        case 'escala':
+          if (!campo.escalaConfig) {
+            campo.escalaConfig = { min: 1, max: 5, etiquetaMin: '', etiquetaMax: '' };
+          }
+          break;
+      }
+      return campo;
     });
 
-    await nuevaRespuesta.save();
-    res.status(201).json({ mensaje: 'Reporte y archivos guardados correctamente' });
+    const nuevoForm = new Formulario({
+      titulo: titulo.trim(),
+      descripcion: descripcion || '',
+      campos: camposValidados,
+      empresaId: req.user.empresaId,
+      creadoPor: req.user._id,
+      esPlantilla: esPlantilla || false,
+      categoria: esPlantilla ? categoria : null
+    });
 
+    await nuevoForm.save();
+
+    // Incrementar contador de formularios de la empresa
+    const empresa = req.empresa;
+    if (empresa) {
+      await empresa.incrementarContador('formularios');
+    }
+
+    res.status(201).json({
+      exito: true,
+      mensaje: "Formulario creado exitosamente",
+      data: nuevoForm
+    });
   } catch (error) {
-    console.error("ERROR AL GUARDAR:", error);
-    res.status(500).json({ error: 'Error físico al guardar archivos', detalle: error.message });
+    console.error("❌ Error en crearFormulario:", error);
+    res.status(500).json({
+      error: "Error al crear el formulario",
+      code: "SERVER_ERROR",
+      detalle: error.message
+    });
   }
 };
 
-//3. Obtener reportes (respuestas) para el gerente
-exports.listarRespuestas = async (req, res) => {
-    try {
-        const respuestas = await Respuesta.find({ empresaId: req.user.empresaId })
-            // Asegúrate de que 'Usuario' coincida exactamente con mongoose.model('Usuario', ...)
-            .populate({
-                path: 'usuarioId',
-                select: 'nombre',
-                model: 'User' // Forzamos el uso del modelo registrado
-            })
-            .populate('formularioId') 
-            .sort({ fechaEnvio: -1 })
-            .lean();
 
-        // Filtro para evitar errores si se borró un usuario o formulario
-        const respuestasValidas = respuestas.filter(r => r.usuarioId && r.formularioId);
+// GET /api/formularios - Listar formularios
+exports.obtenerFormularios = async (req, res) => {
+  try {
+    const { activo, esPlantilla } = req.query;
+    const empresaId = req.user.empresaId;
 
-        console.log(`[Backend] Enviando ${respuestasValidas.length} reportes.`);
-        res.json(respuestasValidas);
-    } catch (error) {
-        console.error("❌ Error en listarRespuestas:", error.message);
-        res.status(500).json({ error: "Error al cargar los reportes" });
+    // Construir filtro
+    const filtro = { empresaId };
+    if (activo !== undefined) filtro.activo = activo === 'true';
+    if (esPlantilla !== undefined) filtro.esPlantilla = esPlantilla === 'true';
+
+    // SuperAdmin puede ver todos los formularios
+    if (req.user.rol === 'superadmin' && req.query.todos === 'true') {
+      delete filtro.empresaId;
     }
+
+    const formularios = await Formulario.find(filtro)
+      .populate('creadoPor', 'nombre email')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      exito: true,
+      count: formularios.length,
+      data: formularios
+    });
+  } catch (error) {
+    console.error("Error en obtenerFormularios:", error);
+    res.status(500).json({
+      error: "Error al obtener formularios",
+      code: "SERVER_ERROR"
+    });
+  }
 };
+
+// GET /api/formularios/:id - Obtener formulario por ID
+exports.obtenerFormularioPorId = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const empresaId = req.user.empresaId;
+
+    const filtro = { _id: id };
+    // Si no es superadmin, filtrar por empresa
+    if (req.user.rol !== 'superadmin') {
+      filtro.empresaId = empresaId;
+    }
+
+    const formulario = await Formulario.findOne(filtro)
+      .populate('creadoPor', 'nombre email');
+
+    if (!formulario) {
+      return res.status(404).json({
+        error: "Formulario no encontrado",
+        code: "FORMULARIO_NOT_FOUND"
+      });
+    }
+
+    res.json({
+      exito: true,
+      data: formulario
+    });
+  } catch (error) {
+    console.error("Error en obtenerFormularioPorId:", error);
+    res.status(500).json({
+      error: "Error al obtener formulario",
+      code: "SERVER_ERROR"
+    });
+  }
+};
+
+// PUT /api/formularios/:id - Actualizar formulario
+exports.actualizarFormulario = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { titulo, descripcion, campos, activo, esPlantilla, categoria } = req.body;
+    const empresaId = req.user.empresaId;
+
+    const formulario = await Formulario.findOne({ _id: id, empresaId });
+    if (!formulario) {
+      return res.status(404).json({
+        error: "Formulario no encontrado",
+        code: "FORMULARIO_NOT_FOUND"
+      });
+    }
+
+    // Actualizar campos
+    if (titulo) formulario.titulo = titulo.trim();
+    if (descripcion !== undefined) formulario.descripcion = descripcion;
+    if (campos) {
+      formulario.campos = campos;
+      formulario.markModified('campos');
+    }
+    if (activo !== undefined) formulario.activo = activo;
+    if (esPlantilla !== undefined) formulario.esPlantilla = esPlantilla;
+    if (categoria !== undefined) formulario.categoria = categoria;
+
+    await formulario.save();
+
+    res.json({
+      exito: true,
+      mensaje: "Formulario actualizado exitosamente",
+      data: formulario
+    });
+  } catch (error) {
+    console.error("Error en actualizarFormulario:", error);
+    res.status(500).json({
+      error: "Error al actualizar formulario",
+      code: "SERVER_ERROR",
+      detalle: error.message
+    });
+  }
+};
+
+// DELETE /api/formularios/:id - Eliminar formulario
+exports.eliminarFormulario = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const empresaId = req.user.empresaId;
+
+    const formulario = await Formulario.findOne({ _id: id, empresaId });
+    if (!formulario) {
+      return res.status(404).json({
+        error: "Formulario no encontrado",
+        code: "FORMULARIO_NOT_FOUND"
+      });
+    }
+
+    // Soft delete: marcar como inactivo en lugar de eliminar
+    formulario.activo = false;
+    await formulario.save();
+    // await formulario.deleteOne(); // Para eliminación permanente
+
+    res.json({
+      exito: true,
+      mensaje: "Formulario eliminado exitosamente"
+    });
+  } catch (error) {
+    console.error("Error en eliminarFormulario:", error);
+    res.status(500).json({
+      error: "Error al eliminar formulario",
+      code: "SERVER_ERROR"
+    });
+  }
+};
+
+// PATCH /api/formularios/:id/activar - Toggle estado activo
+exports.toggleActivo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const empresaId = req.user.empresaId;
+
+    const formulario = await Formulario.findOne({ _id: id, empresaId });
+    if (!formulario) {
+      return res.status(404).json({
+        error: "Formulario no encontrado",
+        code: "FORMULARIO_NOT_FOUND"
+      });
+    }
+
+    formulario.activo = !formulario.activo;
+    await formulario.save();
+
+    res.json({
+      exito: true,
+      mensaje: `Formulario ${formulario.activo ? 'activado' : 'desactivado'}`,
+      data: { activo: formulario.activo }
+    });
+  } catch (error) {
+    console.error("Error en toggleActivo:", error);
+    res.status(500).json({
+      error: "Error cambiando estado del formulario",
+      code: "SERVER_ERROR"
+    });
+  }
+};
+
+// Métodos de respuestas movidos a respuestaController.js
+
+// Métodos de listar respuestas movidos a respuestaController.js

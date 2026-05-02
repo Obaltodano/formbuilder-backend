@@ -22,6 +22,9 @@ router.get('/metrics', auth, requireSuperAdmin, adminController.getMetrics);
 // GET /api/admin/empresas - Listar empresas
 router.get('/empresas', auth, requireSuperAdmin, adminController.getEmpresas);
 
+// POST /api/admin/empresas - Crear empresa
+router.post('/empresas', auth, requireSuperAdmin, adminController.crearEmpresa);
+
 // PATCH /api/admin/empresas/:id/suspender - Suspender empresa
 router.patch('/empresas/:id/suspender', auth, requireSuperAdmin, adminController.suspenderEmpresa);
 

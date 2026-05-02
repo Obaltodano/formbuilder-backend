@@ -108,6 +108,44 @@ exports.getUsage = async (req, res) => {
 };
 
 /**
+ * GET /api/empresa/limits
+ * Obtener solo los límites del plan actual
+ */
+exports.getLimits = async (req, res) => {
+  try {
+    const empresa = req.empresa;
+    
+    if (!empresa) {
+      return res.status(404).json({ error: 'Empresa no encontrada' });
+    }
+    
+    const plan = await Plan.findById(empresa.configuracionPlan.planId);
+    
+    res.json({
+      exito: true,
+      data: {
+        plan: {
+          id: empresa.configuracionPlan.planId,
+          nombre: plan?.nombre || 'Desconocido',
+          limites: {
+            usuarios: empresa.configuracionPlan.limiteUsuarios,
+            formularios: empresa.configuracionPlan.limiteFormularios,
+            storage: empresa.configuracionPlan.almacenamientoMaxGB * 1024, // Convertir a MB
+            respuestas: plan?.caracteristicas?.maxRespuestas || 10000
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error en getLimits:', error);
+    res.status(500).json({
+      error: 'Error obteniendo límites',
+      detalle: error.message
+    });
+  }
+};
+
+/**
  * GET /api/empresa
  * Obtener información completa de la empresa
  */
@@ -132,6 +170,76 @@ exports.getEmpresaInfo = async (req, res) => {
     console.error('Error en getEmpresaInfo:', error);
     res.status(500).json({
       error: 'Error obteniendo información de empresa',
+      detalle: error.message
+    });
+  }
+};
+
+/**
+ * GET /api/empresa/metrics
+ * Métricas detalladas de la empresa
+ */
+exports.getEmpresaMetrics = async (req, res) => {
+  try {
+    const empresaId = req.user.empresaId;
+    const Formulario = require('../models/Formulario');
+    const Respuesta = require('../models/Respuesta');
+    const User = require('../models/User');
+    
+    const empresa = await Empresa.findOne({ empresaId });
+    if (!empresa) {
+      return res.status(404).json({ error: 'Empresa no encontrada' });
+    }
+    
+    // Obtener métricas en paralelo
+    const [totalFormularios, totalRespuestas, totalUsuarios, respuestasPorMes] = await Promise.all([
+      Formulario.countDocuments({ empresaId }),
+      Respuesta.countDocuments({ empresaId }),
+      User.countDocuments({ empresaId }),
+      Respuesta.aggregate([
+        { $match: { empresaId } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$fechaEnvio' },
+              month: { $month: '$fechaEnvio' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { '_id.year': -1, '_id.month': -1 } },
+        { $limit: 6 }
+      ])
+    ]);
+    
+    res.json({
+      exito: true,
+      data: {
+        empresa: {
+          nombre: empresa.nombre,
+          status: empresa.status,
+          plan: empresa.plan
+        },
+        totales: {
+          formularios: totalFormularios,
+          respuestas: totalRespuestas,
+          usuarios: totalUsuarios,
+          storage: empresa.usados?.storage || 0
+        },
+        limites: empresa.plan?.limites || {},
+        usados: empresa.usados || {},
+        actividad: {
+          respuestasPorMes: respuestasPorMes.map(r => ({
+            mes: `${r._id.year}-${r._id.month.toString().padStart(2, '0')}`,
+            count: r.count
+          }))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error en getEmpresaMetrics:', error);
+    res.status(500).json({
+      error: 'Error obteniendo métricas',
       detalle: error.message
     });
   }

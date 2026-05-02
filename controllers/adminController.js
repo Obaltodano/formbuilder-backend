@@ -274,6 +274,136 @@ exports.getEmpresas = async (req, res) => {
 };
 
 /**
+ * POST /api/admin/empresas
+ * Crear una nueva empresa desde el admin
+ */
+exports.crearEmpresa = async (req, res) => {
+  try {
+    // Adaptar nombres de campos del frontend a los del backend
+    const nombre = req.body.nombre;
+    const empresaId = req.body.empresaId;
+    const email = req.body.email;
+    const password = req.body.password || 'TempPass123!'; // Generar si no viene
+    const planId = req.body.planId || req.body.plan; // Aceptar ambos
+    const nombreAdmin = req.body.nombreAdmin || req.body.contactoNombre; // Aceptar ambos
+
+    console.log('📥 POST /api/admin/empresas - Body recibido:', req.body);
+    console.log('📋 Datos mapeados:', { nombre, empresaId, email, password: '***', planId, nombreAdmin });
+
+    // Validaciones
+    const camposFaltantes = [];
+    if (!nombre) camposFaltantes.push('nombre');
+    if (!empresaId) camposFaltantes.push('empresaId');
+    if (!email) camposFaltantes.push('email');
+    if (!nombreAdmin) camposFaltantes.push('nombreAdmin/contactoNombre');
+
+    if (camposFaltantes.length > 0) {
+      return res.status(400).json({
+        error: `Faltan campos requeridos: ${camposFaltantes.join(', ')}`,
+        code: 'MISSING_FIELDS',
+        camposRequeridos: ['nombre', 'empresaId', 'email', 'nombreAdmin/contactoNombre'],
+        camposRecibidos: Object.keys(req.body),
+        camposFaltantes
+      });
+    }
+
+    // Verificar que empresaId no exista
+    const empresaExistente = await Empresa.findOne({ empresaId: empresaId.toLowerCase() });
+    if (empresaExistente) {
+      return res.status(409).json({
+        error: 'El empresaId ya está en uso',
+        code: 'EMPRESAID_EXISTS'
+      });
+    }
+
+    // Verificar que email no exista
+    const emailExistente = await User.findOne({ email: email.toLowerCase() });
+    if (emailExistente) {
+      return res.status(409).json({
+        error: 'El email ya está registrado',
+        code: 'EMAIL_EXISTS'
+      });
+    }
+
+    // Buscar plan (por ID o por nombre, o usar gratuito)
+    let plan = null;
+    if (planId) {
+      plan = await Plan.findById(planId);
+      if (!plan && typeof planId === 'string') {
+        // Buscar por nombre si no es ObjectId válido
+        plan = await Plan.findOne({ nombre: { $regex: planId, $options: 'i' } });
+      }
+    }
+    if (!plan) {
+      plan = await Plan.findOne({ esGratis: true }) || await Plan.findOne({});
+    }
+    console.log('📦 Plan seleccionado:', plan ? plan.nombre : 'Ninguno');
+
+    // Crear empresa
+    const nuevaEmpresa = new Empresa({
+      empresaId: empresaId.toLowerCase(),
+      nombre,
+      email: email.toLowerCase(),
+      password,
+      status: 'activa',
+      plan: {
+        id: plan._id.toString(),
+        nombre: plan.nombre,
+        precio: plan.precioMensual || 0,
+        limites: {
+          usuarios: parseInt(plan.caracteristicas?.maxUsuarios) || 5,
+          formularios: parseInt(plan.caracteristicas?.maxFormularios) || 10,
+          storage: parseInt(plan.caracteristicas?.almacenamientoGB * 1024) || 1024,
+          respuestas: parseInt(plan.caracteristicas?.maxRespuestas) || 1000
+        }
+      },
+      usados: { usuarios: 1, formularios: 0, storage: 0, respuestas: 0 },
+      branding: { nombreApp: nombre }
+    });
+
+    await nuevaEmpresa.save();
+
+    // Crear usuario gerente para la empresa
+    const bcrypt = require('bcryptjs');
+    const gerente = new User({
+      nombre: nombreAdmin,
+      email: email.toLowerCase(),
+      password: bcrypt.hashSync(password, 10),
+      rol: 'gerente',
+      empresaId: empresaId.toLowerCase(),
+      activo: true
+    });
+
+    await gerente.save();
+
+    res.status(201).json({
+      exito: true,
+      mensaje: 'Empresa creada exitosamente',
+      data: {
+        empresa: {
+          _id: nuevaEmpresa._id,
+          empresaId: nuevaEmpresa.empresaId,
+          nombre: nuevaEmpresa.nombre,
+          status: nuevaEmpresa.status
+        },
+        gerente: {
+          _id: gerente._id,
+          nombre: gerente.nombre,
+          email: gerente.email
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en crearEmpresa:', error);
+    res.status(500).json({
+      error: 'Error creando empresa',
+      detalle: error.message
+    });
+  }
+};
+
+/**
  * PATCH /api/admin/empresas/:id/suspender
  * Suspender una empresa
  */

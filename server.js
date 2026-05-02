@@ -37,19 +37,7 @@ app.use((req, res, next) => {
 
 // CORS middleware adicional para configuración específica
 app.use(cors({
-    origin: function(origin, callback) {
-        // Permitir cualquier origen en desarrollo
-        const allowedOrigins = process.env.FRONTEND_URL 
-            ? process.env.FRONTEND_URL.split(',') 
-            : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080', 'http://localhost:4200', 'http://127.0.0.1:5173'];
-        
-        // Permitir requests sin origin (como Postman, curl)
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('CORS no permitido para este origen'));
-        }
-    },
+    origin: true, // Permitir cualquier origen en desarrollo
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization', 'Origin', 'X-Requested-With', 'Accept'],
     credentials: true,
@@ -62,6 +50,7 @@ app.use(express.json());
 // Definir Rutas
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/usuarios', require('./routes/usuarios')); // Para que el gerente cree empleados
+app.use('/api/usuarios', require('./routes/perfil')); // Rutas de perfil (Contrato v1.0)
 app.use('/api/formularios', require('./routes/formularios'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/respuestas', require('./routes/respuestas'));
@@ -82,3 +71,6 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
+
+// Exportar para testing
+module.exports = app;

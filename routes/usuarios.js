@@ -1,61 +1,43 @@
+// routes/usuarios.js - Rutas de Usuarios/Gestión de Equipo (Contrato v1.0)
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const auth = require('../middleware/auth');
-const userController = require('../controllers/userController');
-const upload = require('../middleware/upload'); // Configuración de Multer
+const Empresa = require('../models/Empresa');
+const usuarioController = require('../controllers/usuarioController');
+const {
+  verifyToken,
+  requireRole,
+  verifyEmpresaActiva,
+  verificarLimitesPlan
+} = require('../middleware/authMiddleware');
 
-// @route   GET api/usuarios/equipo
-// @desc    Obtener todo el personal de la empresa del gerente
-router.get('/equipo', auth, async (req, res) => {
-    try {
-        // NOTA: Revisa si tu middleware usa 'req.user' o 'req.usuario'
-        // Según tu código anterior, suele ser 'req.user'
-        const idEmpresa = req.user?.empresaId || req.usuario?.empresaId;
+// Middleware común para todas las rutas
+router.use(verifyToken);
+router.use(verifyEmpresaActiva);
 
-        const personal = await User.find({ 
-            empresaId: idEmpresa 
-        }).select('-password'); // Excluimos la contraseña por seguridad
+// ==================== GESTIÓN DE EQUIPO (Gerente) ====================
 
-        res.json(personal);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener el equipo');
-    }
-});
+// GET /api/usuarios/equipo - Listar equipo de la empresa
+router.get('/equipo', usuarioController.getEquipo);
 
-// @route   POST api/usuarios/registro-equipo
-router.post('/registro-equipo', auth, async (req, res) => {
-    try {
-        const { nombre, email, password, rol } = req.body;
-        const empresaId = req.user?.empresaId || req.usuario?.empresaId;
+// POST /api/usuarios/registro-equipo - Crear usuario en la empresa
+// Verifica límite de usuarios del plan antes de crear
+router.post('/registro-equipo',
+  requireRole(['gerente', 'superadmin']),
+  verificarLimitesPlan('usuarios'),
+  usuarioController.registrarEquipo
+);
 
-        let user = await User.findOne({ email });
-        if (user) return res.status(400).json({ msg: 'El usuario ya existe' });
+// DELETE /api/usuarios/:id - Eliminar usuario del equipo
+router.delete('/:id',
+  requireRole(['gerente', 'superadmin']),
+  usuarioController.eliminarUsuario
+);
 
-        user = new User({
-            nombre,
-            email,
-            password, // Recuerda hashear esto si no tienes un pre-save hook
-            rol,
-            empresaId
-        });
+// PATCH /api/usuarios/:id/activar - Activar/desactivar usuario
+router.patch('/:id/activar',
+  requireRole(['gerente', 'superadmin']),
+  usuarioController.toggleActivo
+);
 
-        await user.save();
-        res.json({ msg: 'Usuario creado con éxito' });
-    } catch (err) {
-        res.status(500).send('Error al registrar');
-    }
-});
-
-
-// Ruta para obtener los datos del perfil actual
-router.get('/perfil', auth, userController.obtenerPerfil);
-
-// Ruta para actualizar datos de texto (nombre, dni, telefono)
-router.put('/perfil', auth, userController.actualizarPerfil);
-
-// Ruta para subir la foto de perfil
-// 'fotoPerfil' es el nombre del campo que enviará el FormData desde Vue
-router.post('/perfil/foto', auth, upload.single('fotoPerfil'), userController.subirFoto);
 module.exports = router;

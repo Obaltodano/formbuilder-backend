@@ -1,4 +1,4 @@
-// models/Empresa.js - Modelo SaaS para gestión de tenants
+// models/Empresa.js - Modelo SaaS para gestión de tenants (Contrato v1.0)
 const mongoose = require('mongoose');
 
 const EmpresaSchema = new mongoose.Schema({
@@ -10,28 +10,35 @@ const EmpresaSchema = new mongoose.Schema({
     maxlength: [100, 'El nombre no puede exceder 100 caracteres']
   },
   
-  slug: {
+  empresaId: {
     type: String,
-    required: [true, 'El slug es obligatorio'],
+    required: [true, 'El empresaId es obligatorio'],
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^[a-z0-9-]+$/, 'El slug solo puede contener letras minúsculas, números y guiones']
+    match: [/^[a-z0-9-]+$/, 'El empresaId solo puede contener letras minúsculas, números y guiones'],
+    alias: 'slug'
   },
   
-  logoUrl: {
+  email: {
     type: String,
-    default: null
+    required: true,
+    lowercase: true
   },
   
-  // Estado del tenant
+  password: {
+    type: String,
+    required: true
+  },
+  
+  // Estado del tenant (Según contrato v1.0)
   status: {
     type: String,
     enum: {
-      values: ['activo', 'suspendido', 'pendiente_pago', 'demo', 'eliminado'],
+      values: ['activa', 'suspendida', 'demo', 'pendiente'],
       message: 'Estado no válido'
     },
-    default: 'demo'
+    default: 'pendiente'
   },
   
   motivoSuspension: {
@@ -39,53 +46,46 @@ const EmpresaSchema = new mongoose.Schema({
     default: null
   },
   
-  // Configuración de plan y suscripción
-  configuracionPlan: {
-    planId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Plan',
-      required: true
-    },
-    fechaInicio: {
-      type: Date,
-      default: Date.now
-    },
-    fechaVencimiento: {
-      type: Date,
-      required: true
-    },
-    limiteUsuarios: {
-      type: Number,
-      required: true,
-      min: 1
-    },
-    limiteFormularios: {
-      type: Number,
-      required: true,
-      min: 1
-    },
-    almacenamientoMaxGB: {
-      type: Number,
-      required: true,
-      min: 0.1
-    },
-    usadoGB: {
-      type: Number,
-      default: 0,
-      min: 0
+  // Plan y suscripción
+  plan: {
+    id: { type: String, required: true },
+    nombre: { type: String, required: true },
+    precio: { type: Number, default: 0 },
+    limites: {
+      usuarios: { type: Number, default: 5 },
+      formularios: { type: Number, default: 10 },
+      storage: { type: Number, default: 100 }, // en MB
+      respuestas: { type: Number, default: 1000 }
     }
   },
   
-  // Personalización de marca
+  // Contadores de uso (Según contrato v1.0)
+  usados: {
+    usuarios: { type: Number, default: 0 },
+    formularios: { type: Number, default: 0 },
+    storage: { type: Number, default: 0 }, // en MB
+    respuestas: { type: Number, default: 0 }
+  },
+  
+  // Personalización de marca (Según contrato v1.0)
   branding: {
-    colorPrimario: {
+    nombreApp: {
       type: String,
-      default: '#007bff',
-      match: [/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Color hexadecimal no válido']
+      default: 'Form Builder'
     },
-    logoLogin: {
+    logoUrl: {
       type: String,
       default: null
+    },
+    colorPrimario: {
+      type: String,
+      default: '#3B82F6',
+      match: [/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Color hexadecimal no válido']
+    },
+    colorSecundario: {
+      type: String,
+      default: '#1E293B',
+      match: [/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Color hexadecimal no válido']
     },
     favicon: {
       type: String,
@@ -93,25 +93,28 @@ const EmpresaSchema = new mongoose.Schema({
     }
   },
   
+  // Configuración adicional
+  configuracion: {
+    dominioPersonalizado: String,
+    notificaciones: {
+      email: { type: Boolean, default: true },
+      push: { type: Boolean, default: false }
+    }
+  },
+  
   // Contacto y facturación
   contacto: {
     emailFacturacion: {
       type: String,
-      required: true,
       lowercase: true
     },
     telefono: String,
     direccion: String,
-    rfc: String, // o identificación fiscal según país
+    rfc: String,
     razonSocial: String
   },
   
-  // Metadatos SaaS
-  fechaRegistro: {
-    type: Date,
-    default: Date.now
-  },
-  
+  // Metadatos
   ultimoAcceso: {
     type: Date,
     default: null
@@ -120,62 +123,47 @@ const EmpresaSchema = new mongoose.Schema({
   creadoPor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  },
-  
-  // Soft delete
-  deletedAt: {
-    type: Date,
-    default: null
-  },
-  
-  isDeleted: {
-    type: Boolean,
-    default: false
   }
 }, {
   timestamps: true // createdAt, updatedAt
 });
 
-// Índices para performance (slug ya tiene unique: true en el schema)
+// Índices para performance
 EmpresaSchema.index({ status: 1 });
-EmpresaSchema.index({ 'configuracionPlan.fechaVencimiento': 1 });
-EmpresaSchema.index({ isDeleted: 1 });
+// Nota: empresaId ya tiene unique: true que crea índice automáticamente
 
-// Middleware para soft delete
-EmpresaSchema.pre('find', function() {
-  this.where({ isDeleted: false });
-});
-
-EmpresaSchema.pre('findOne', function() {
-  this.where({ isDeleted: false });
-});
 
 // Métodos de instancia
-EmpresaSchema.methods.softDelete = function() {
-  this.isDeleted = true;
-  this.deletedAt = new Date();
-  this.status = 'eliminado';
-  return this.save();
+
+// Verificar si la empresa está activa
+EmpresaSchema.methods.isActiva = function() {
+  return this.status === 'activa';
 };
 
-EmpresaSchema.methods.restore = function() {
-  this.isDeleted = false;
-  this.deletedAt = null;
-  this.status = 'pendiente_pago';
-  return this.save();
+// Incrementar contadores de uso
+EmpresaSchema.methods.incrementarContador = async function(campo, cantidad = 1) {
+  this.usados[campo] += cantidad;
+  return await this.save();
 };
 
-// Verificar si el plan está activo
-EmpresaSchema.methods.isPlanActive = function() {
-  return this.status === 'activo' && 
-         this.configuracionPlan.fechaVencimiento > new Date();
+// Verificar si ha excedido algún límite
+EmpresaSchema.methods.verificarLimites = function() {
+  const limites = {
+    usuarios: this.usados.usuarios >= this.plan.limites.usuarios,
+    formularios: this.usados.formularios >= this.plan.limites.formularios,
+    storage: this.usados.storage >= this.plan.limites.storage,
+    respuestas: this.usados.respuestas >= this.plan.limites.respuestas
+  };
+  
+  return {
+    excedido: Object.values(limites).some(v => v),
+    detalles: limites
+  };
 };
 
-// Calcular días restantes del plan
-EmpresaSchema.methods.diasRestantes = function() {
-  if (!this.isPlanActive()) return 0;
-  const diff = this.configuracionPlan.fechaVencimiento - new Date();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+// Métodos estáticos
+EmpresaSchema.statics.findByEmpresaId = function(empresaId) {
+  return this.findOne({ empresaId });
 };
 
 module.exports = mongoose.model('Empresa', EmpresaSchema);

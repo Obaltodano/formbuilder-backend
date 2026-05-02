@@ -50,66 +50,43 @@ const PlanSchema = new mongoose.Schema({
     }
   },
   
-  // Características del plan
-  caracteristicas: {
-    maxUsuarios: {
+  // Límites del plan (Según contrato v1.0)
+  limites: {
+    usuarios: {
       type: Number,
       required: true,
       min: 1,
       default: 5
     },
-    maxFormularios: {
+    formularios: {
       type: Number,
       required: true,
       min: 1,
       default: 10
     },
-    maxGrupos: {
-      type: Number,
-      default: 3
-    },
-    maxRespuestasPorFormulario: {
-      type: Number,
-      default: 1000
-    },
-    multimedia: {
-      type: Boolean,
-      default: true
-    },
-    gps: {
-      type: Boolean,
-      default: true
-    },
-    exportExcel: {
-      type: Boolean,
-      default: false
-    },
-    exportPDF: {
-      type: Boolean,
-      default: false
-    },
-    brandingPersonalizado: {
-      type: Boolean,
-      default: false
-    },
-    soportePrioritario: {
-      type: Boolean,
-      default: false
-    },
-    webhooks: {
-      type: Boolean,
-      default: false
-    },
-    apiAccess: {
-      type: Boolean,
-      default: false
-    },
-    almacenamientoGB: {
+    storage: {
       type: Number,
       required: true,
-      min: 0.5,
-      default: 5
+      min: 1,
+      default: 100 // en MB
+    },
+    respuestas: {
+      type: Number,
+      required: true,
+      default: 1000
     }
+  },
+  
+  // Características adicionales (features del plan)
+  caracteristicas: {
+    multimedia: { type: Boolean, default: true },
+    gps: { type: Boolean, default: true },
+    exportExcel: { type: Boolean, default: false },
+    exportPDF: { type: Boolean, default: false },
+    brandingPersonalizado: { type: Boolean, default: false },
+    soportePrioritario: { type: Boolean, default: false },
+    webhooks: { type: Boolean, default: false },
+    apiAccess: { type: Boolean, default: false }
   },
   
   // Visibilidad
